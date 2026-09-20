@@ -1,5 +1,5 @@
 ---
-title: 面试题 · 第 2 页
+title: Questions · 第 2 页
 url: wikibar://questions/page-2
 source_type: questions
 folder: questions
@@ -7,7 +7,7 @@ count: 7
 fetched_at: '2026-09-20T01:20:53.496700+00:00'
 ---
 
-# 面试题 · 第 2 页
+# Questions · 第 2 页
 
 ## Q1: Token消耗过高的核心优化方案？
 

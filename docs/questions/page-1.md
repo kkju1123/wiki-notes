@@ -1,5 +1,5 @@
 ---
-title: 面试题 · 第 1 页
+title: Questions · 第 1 页
 url: wikibar://questions/page-1
 source_type: questions
 folder: questions
@@ -7,7 +7,7 @@ count: 20
 fetched_at: '2026-09-20T01:20:53.490742+00:00'
 ---
 
-# 面试题 · 第 1 页
+# Questions · 第 1 页
 
 ## Q1: 什么是 TCP 三次握手？
 
@@ -58,7 +58,7 @@ ReAct 是“思考-行动-观察”交替进行，每步根据环境反馈决定
 
 ## Q9: Function Calling与模型直出JSON的优劣及适用场景？
 
-Function Calling 由模型/平台按工具 schema 生成结构化调用，工具选择和多参数约束更可靠，接入多工具、流式调用更方便；缺点是依赖模型和网关支持，调试和跨模型迁移略受限。直出 JSON 的优势是灵活、模型无关，适合简单结构化提取、非工具调用、离线或需自定义解析的场景；缺点是 schema 遵循不稳定，需要自己做校验、重试和错误处理。生产环境多工具调用优先 Function Calling；只做结构化输出或不方便走 FC 时用 JSON，但必须有校验层。
+Function Calling 由模型/平台按工具 schema 生成结构化调用，工具选择和多参数约束更可靠，接入多工具、流式调用更方便；缺点是<mark>依赖模型和网关支持，调试和跨模型迁移略受限</mark>。直出 JSON 的优势是灵活、模型无关，适合简单结构化提取、非工具调用、离线或需自定义解析的场景；缺点是 schema 遵循不稳定，需要自己做校验、重试和错误处理。生产环境多工具调用优先 Function Calling；只做结构化输出或不方便走 FC 时用 JSON，但必须有校验层。
 
 
 ## Q10: 工具Schema设计要点，参数模糊会引发哪些线上问题？

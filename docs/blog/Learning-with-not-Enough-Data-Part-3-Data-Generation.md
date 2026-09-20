@@ -1,0 +1,416 @@
+---
+title: 'Learning with not Enough Data Part 3: Data Generation'
+url: https://lilianweng.github.io/posts/2022-04-15-data-gen/
+source_type: web
+folder: blog
+author: null
+tags: []
+summary: ''
+fetched_at: '2026-09-20T08:44:53.587560+00:00'
+---
+
+Here comes the Part 3 on learning with not enough data (Previous: [Part 1](https://lilianweng.github.io/posts/2021-12-05-semi-supervised/) and [Part 2](https://lilianweng.github.io/posts/2022-02-20-active-learning/)). Let’s consider two approaches for generating synthetic data for training.
+
+*   **Augmented data**. Given a set of existing training samples, we can apply a variety of augmentation, distortion and transformation to derive new data points without losing the key attributes. We have covered a bunch of augmentation methods on text and images in a [previous post](https://lilianweng.github.io/posts/2021-05-31-contrastive/) on contrastive learning. For the sake of post completeness, I _duplicate_ the section on data augmentation here with some edits.
+*   **New data**. Given few or even no data points, we can rely on powerful pretrained models to generate a number of _new_ data points. This is especially true in recent years given the fast progress in large pretrained [language models (LM)](https://lilianweng.github.io/posts/2019-01-31-lm/). Few shot prompting is shown to be effective for LM to learn within context without extra training.
+
+## Data Augmentation
+
+The goal of data augmentation is to modify the input format (e.g. text wording, visual appearance) while the semantic meaning stays unchanged.
+
+## Image Augmentation
+
+### Basic Image Processing Operations
+
+There are several ways to modify an image while retaining its semantic information. We can use any one of the following augmentation or a composition of multiple operations.
+
+*   Random cropping and then resize back to the original size.
+*   Random color distortions
+*   Random Gaussian blur
+*   Random color jittering
+*   Random horizontal flip
+*   Random grayscale conversion
+*   And many more. Check [PIL.ImageOps](https://pillow.readthedocs.io/en/stable/reference/ImageOps.html) for inspiration.
+
+### Task-Specific Augmentation Strategies
+
+If the downstream task is known, it is possible to learn the optimal augmentation strategies (i.e. what processing operations to use and how to combine them in sequence) to maximize the downstream task performance.
+
+*   [_AutoAugment_](https://lilianweng.github.io/posts/2019-05-05-domain-randomization/#AutoAugment) ([Cubuk, et al. 2018](https://arxiv.org/abs/1805.09501)) is inspired by [neural architecture search](https://lilianweng.github.io/posts/2020-08-06-nas/), AutoAugment frames the problem of learning best data augmentation operations (i.e. shearing, rotation, invert, etc.) for image classification as an RL problem and looks for the combination that leads to the highest accuracy on the evaluation set. AutoAugment can be executed in adversarial fashion ([Zhang, et al 2019](https://arxiv.org/abs/1912.11188)).
+*   _RandAugment_ ([Cubuk et al., 2019](https://arxiv.org/abs/1909.13719)) greatly reduces the search space of AutoAugment by controlling the magnitudes of different transformation operations with a single magnitude parameter.
+*   _Population based augmentation_ (PBA; [Ho et al., 2019](https://arxiv.org/abs/1905.05393)) combines PBT (“population based training”; [Jaderberg et al, 2017](https://arxiv.org/abs/1711.09846)) with AutoAugment, using the evolutionary algorithm to train a population of children models in parallel to evolve the best augmentation strategies.
+*   _Unsupervised Data Augmentation_ (UDA; [Xie et al., 2019](https://arxiv.org/abs/1904.12848)), among a set of possible augmentation strategies, selects a subset to minimize the KL divergence between the predicted distribution over an unlabelled example and its unlabelled augmented version.
+
+### Image Mixture
+
+Image mixture methods can construct new training examples from existing data points.
+
+*   _Mixup_ ([Zhang et al., 2018](https://arxiv.org/abs/1710.09412)) runs global-level mixture by creating a weighted pixel-wise combination of two existing images and : and .
+*   _Cutmix_ ([Yun et al., 2019](https://arxiv.org/abs/1905.04899)) does region-level mixture by generating a new example by combining a local region of one image with the rest of the other image. , where is a binary mask and is element-wise multiplication. It is equivalent to filling the _cutout_ ([DeVries & Taylor 2017](https://arxiv.org/abs/1708.04552)) region with the same region from another image.
+*   Given a query , _MoCHi_ (“mixing of contrastive hard negatives”; [Kalantidis et al. 2020](https://arxiv.org/abs/2010.01028)) maintains a queue of negative features and sorts these negative features by similarity to the query, , in descending order. The first items in the queue are considered as the hardest negatives, . Then synthetic hard examples can be generated by where and . Even harder examples can be created by mixing with the query feature, where and .
+
+## Text Augmentation
+
+### Lexical Edits
+
+[](https://lilianweng.github.io/posts/2022-04-15-data-gen/)_Easy Data Augmentation_ (EDA; [Wei & Zou 2019](https://arxiv.org/abs/1901.11196)) defines a set of simple but powerful operations for text augmentation. Given a sentence, EDA randomly chooses and applies one of four simple operations:
+
+1.   Synonym replacement (SR): Replace random non-stop words with their synonyms.
+2.   Random insertion (RI): Place a random synonym of a randomly selected non-stop word in the sentence at a random position.
+3.   Random swap (RS): Randomly swap two words and repeat times.
+4.   Random deletion (RD): Randomly delete each word in the sentence with probability .
+
+where and , with the intuition that longer sentences can absorb more noise while maintaining the original label. The hyperparameter roughly indicates the percent of words in one sentence that may be changed by one augmentation.
+
+EDA is shown to improve the classification accuracy on several classification benchmark datasets compared to baseline without EDA. The performance lift is more significant on a _smaller_ training set. All the four operations in EDA help improve the classification accuracy, but get to optimal at different ’s.
+
+![Image 1](https://lilianweng.github.io/posts/2022-04-15-data-gen/EDA-exp1.png)
+
+EDA leads to performance improvement on several classification benchmarks. (Image source: [Wei & Zou 2019](https://arxiv.org/abs/1901.11196))
+
+_Contextual_ Augmentation ([Kobayashi, 2018](https://arxiv.org/abs/1805.06201)) replaces word at position by sampling from a probability distribution learned by a bidirectional LM such as BERT, . In this way, the words are substituted by synonyms, or similar words suitable for the context. To guarantee such operations do not alter the labels, the LM is fit to be label-conditioned bidirectional LM. Conditional BERT (CBERT; [Xing Wu et al. 2018](https://arxiv.org/abs/1812.06705)) extends BERT to predict masked tokens conditioned on the class label and can be used for contextual augmentation prediction.
+
+### Back-translation
+
+_Back-translation_ produces augmented data by translating text samples to another language and then translating them back. The translation happens in two ways and both directions should have decent enough performance to avoid significant loss of semantic meaning.
+
+### Mix-up
+
+It is also possible to apply [_Mixup_](https://lilianweng.github.io/posts/2022-04-15-data-gen/#image-mixture) to text ([Guo et al. 2019](https://arxiv.org/abs/1905.08941)) but on the embedding space to obtain some performance gain. The proposed method relies on a specially designed model architecture to operate the prediction on the word or sentence embedding. Adding adversarial noise in the embedding space as a way of data augmentation is shown to improve the generalization of model training ([Zhu et al. 2019](https://arxiv.org/abs/1909.11764)).
+
+## Audio Augmentation
+
+Here is a list of several commonly used audio data augmentation methods, operated on raw audio or spectrograms, summarized by [Wang & van den Oord (2021)](https://arxiv.org/abs/2103.06508).
+
+**Audio mixup.** Given two audio clips and , the mixed-up version should be associated with the label of the more dominant input. The audio mixup augments the data with more realistic noise.
+
+**Time masking.** A small consecutive chunk of the audio can be masked without losing semantic information.
+
+**Frequency masking.** A small amount of frequency components on the spectrogram can be dropped off and it should not change the associated label.
+
+**Frequency shift.** The spectrogram can be shifted by an integer between , where is the maximum shift size. It is a cheap augmentation to change the pitch of the audio.
+
+## Architectural Augmentation
+
+Models with **dropout** layers can create augmented samples by applying different dropout masks on the same input sample. For example, in the contrastive learning model [_SimCSE_](https://lilianweng.github.io/posts/2021-05-31-contrastive/#simcse) ([Guo et al. 2021](https://arxiv.org/abs/2104.08821)), a sample is simply fed into the encoder twice with different dropout masks and these two versions are the positive pair where the other in-batch samples are considered as negative pairs.
+
+Dropout augments data by adding noise onto the internal representation of the model. It can be applied in a more structured way, such as in **cutoff** ([Shen et al. (2020)](https://arxiv.org/abs/2009.13818)), where random chunks of the token embedding matrix are removed.
+
+## Data Synthesis
+
+Given that generating high-quality, photorealistic images is a lot more difficult than generating human-like natural language text and recent success with large pretrained language models, this section only focuses on text generation. To read more on how to synthesize realistic images, check posts on [GAN](https://lilianweng.github.io/posts/2017-08-20-gan/), [VAE](https://lilianweng.github.io/posts/2018-08-12-vae/), [flow](https://lilianweng.github.io/posts/2018-10-13-flow-models/) and [diffusion](https://lilianweng.github.io/posts/2021-07-11-diffusion-models/) models.
+
+## Language Model as Noisy Annotator
+
+[Wang et al. (2021)](https://arxiv.org/abs/2108.13487) explored ways to leverage GPT-3 as a weak annotator via few-shot prompting, achieving 10x cheaper than human labeling. The paper argues that by using data labeled by GPT-3, it essentially performs [_self-training_](https://lilianweng.github.io/posts/2021-12-05-semi-supervised/#self-training): The predictions on unlabeled samples apply entropy regularization on the model to avoid high class overlaps so as to help improve the model performance.
+
+![Image 2](https://lilianweng.github.io/posts/2022-04-15-data-gen/GPT3-data-gen.png)
+
+Illustration of how to use GPT-3 to generate more training data with the human-in-the-loop active learning pipeline to improve the data quality. (Image source: [Wang et al. 2021](https://arxiv.org/abs/2108.13487))
+
+GPT-3-labeled samples selected by [active learning](https://lilianweng.github.io/posts/2022-02-20-active-learning/) with highest uncertainty are sent to human labelers to be re-annotated. The few-shot prompt contains a small number of human labeled examples and thus the labeling cost is restricted. Synthetic samples are ranked by predicted logits of label and those with the lowest scores go through relabeling.
+
+GPT-3 labeling achieves better results in the low-cost regime, but has a gap with human labeling when enough money is spent on data collection. This implies the following inequation, although to what extent “a lot” or “noisy” means depends on the task details.
+
+> **A lot of high-quality data > A lot of noisy data > A little high quality data**.
+
+![Image 3](https://lilianweng.github.io/posts/2022-04-15-data-gen/GPT3-data-gen-exp.png)
+
+GPT-3 labeling technique improves the classification performance in the low-cost regime. (Image source: [Wang et al. 2021](https://arxiv.org/abs/2108.13487))
+
+## Language Model as Data Generator
+
+If enough training dataset for text classification tasks are available, we can fine-tune language models to synthesize more training samples conditioned on labels ([Anaby-Tavor et al. 2019](https://arxiv.org/abs/1911.03118), [Kumar et al. 2021](https://arxiv.org/abs/2003.02245)).
+
+_Language-model-based data augmentation_ (**LAMBADA**; [Anaby-Tavor et al. 2019](https://arxiv.org/abs/1911.03118)) takes such an idea, where the process involves fine-tuning both a classifier and a sample generation model.
+
+1.   Train a baseline classifier using the existing training dataset: .
+2.   [](https://lilianweng.github.io/posts/2022-04-15-data-gen/)Independently of step 1, a LM is fine-tuned on to obtain .
+3.   Synthesize a labeled dataset by generating the continuation of the sequence `y[SEP]` until `EOS` using .
+4.   Filter synthesized dataset by, 
+    *   (1) Verifying that the predicted label is correct ;
+    *   (2) Selecting the top ranked samples when they are ranked by the classifier probability. . They generate 10x more samples needed for augmentation and only the top 10% synthesized samples with highest confidence scores remain.
+
+The final classifier is trained on . The process can be repeated multiple times, but it is unclear whether the benefit would quickly diminish or the repetitive process would bring in self-bias.
+
+![Image 4](https://lilianweng.github.io/posts/2022-04-15-data-gen/LAMBADA.png)
+
+Accuracy of LAMBADA vs. other generative approaches over all datasets and classifiers. (Image source: [Anaby-Tavor et al. 2019](https://arxiv.org/abs/1911.03118))
+
+To simplify LAMBADA, we can actually remove the dependency of a fine-tuned generation model and an existing training dataset of a decent size ([Step 2](https://lilianweng.github.io/posts/2022-04-15-data-gen/#step2) above). _Unsupervised data generation_ (**UDG**; [Wang et al. 2021](https://arxiv.org/abs/2109.09193)) relies on few-shot prompting on a large pretrained language model to generate high-quality synthetic data for training. Opposite to the above approach where LM is asked to predict given , UDG instead synthetizes the inputs given labels . Then a task-specific model is trained on this synthetic dataset.
+
+[Schick & Schutze (2021)](https://arxiv.org/abs/2104.07540) proposed a similar idea but on the NLI task instead of classification, asking PLM to write sentence pairs that are similar or different while the model is prompted with task-specific instructions.
+
+![Image 5](https://lilianweng.github.io/posts/2022-04-15-data-gen/UDG.png)
+
+Illustration of the unsupervised data generation (UDG) framework. (Image source: [Wang et al., 2021](https://arxiv.org/abs/2109.09193))
+
+The few-shot prompts of UDG contain a small number of unlabeled examples, as well as a task-specific natural language description of the desired label. Because some generated examples are noisy, they implemented **noisy label annealing** (**NLA**) techniques to filter potentially misaligned samples out during the training processes. NLA gradually removes noisy training signals in time during training when the model starts to disagree with its pseudo label with high confidence. At each training step , a given example is considered noisy and should be removed if:
+
+*   The model predicted probability is higher than a threshold where ;
+*   And the predicted label is different from the synthetic label, .
+
+Note that the threshold is time-dependent, initialized as 0.9 and then gradually annealed to in time.
+
+As shown in their experiments, the improvement of UDG over few-shot inference is quit significant, where NLA brings in some extra boost. The results are even comparable with supervised fine-tuning on several cases.
+
+![Image 6](https://lilianweng.github.io/posts/2022-04-15-data-gen/UDG-exp.png)
+
+Comparison of accuracy of UDG and other methods on different classification datasets. (Image source: [Wang et al., 2021](https://arxiv.org/abs/2109.09193))
+
+[Han et al (2021)](https://arxiv.org/abs/2110.05448) achieved SOTA results on translation tasks using few-shot data generation, distillation and back-translation. The proposed method contains the following steps, assuming no access to paired translation data:
+
+1.   _Zero-shot Generation._ First use the zero-shot translation ability of a pre-trained LM to generate translations for a small set of unlabeled sentences.
+2.   _Few-shot Generation._ Then amplify these zero-shot translations by using them as few-shot demonstrations to gather an even larger synthetic dataset.
+3.   _Distillation._ Fine-tune the model on this dataset. The translation task is formulated as a language modeling task `[L1] <seq1> [[TRANSLATE]] [L2] <seq2>.` given a pair of two sequences `<seq1, seq2>` in two different languages. At test-time, the LM is prompted with `[L1] <seq> [[TRANSLATE]] [L2]` and a candidate translation `<sampledSeq>` is parsed from the sampled completion.
+4.   _Back-translation._ Continue fine-tuning on the back-translation dataset where the order of samples is reversed, `<sampledSeq, seq>`.
+5.   Step 1-4 can be repeated.
+
+![Image 7](https://lilianweng.github.io/posts/2022-04-15-data-gen/back-translation-data-gen.png)
+
+Algorithm of using distillation and back-translation to train a language model on translation tasks. (Image source: [Han et al. 2021](https://arxiv.org/abs/2110.05448))
+
+The success of the above method depends on a good pretrained LM to kick off the initial translation dataset. Iterative few-shot generation and distillation with back-translation is an effective way to extract and refine the translation capability out of a pretrained LM and further to distill that into a new model.
+
+![Image 8](https://lilianweng.github.io/posts/2022-04-15-data-gen/back-translation-data-gen-exp.png)
+
+Comparison of BLEU scores of the translation models of different training runs using: only distillation, back-translation, both and with more monolingual training data. (Image source: [Han et al. 2021](https://arxiv.org/abs/2110.05448))
+
+## How to Quantify Generated Data Quality?
+
+Given all the generated data, either by data augmentation or data synthesis, how can we quantify data quality in terms of how they improve model generalization? [Gontijo-Lopes et al. (2020)](https://arxiv.org/abs/2002.08973) introduced two dimensions to track, affinity and diversity.
+
+*   **Affinity** is a model-sensitive metric for _distribution shift_, quantifying how much an augmentation shifts the training data distribution from what a model learned. 
+    *   Definition: The performance difference between the model tested on clean data vs augmented data, while the model is trained on clean data.
+    *   As a comparison, KL can also measure distribution shift but does not consider the model performance.
+
+*   **Diversity** is a measure of _augmentation complexity_, measuring the complexity of the augmented data with respect to the model and learning procedure. 
+    *   Definition: The final training loss of a model trained with a given augmentation.
+    *   Another potential diversity measure is the entropy of the transformed data.
+    *   A third potential diversity measure is the training time needed for a model to reach a given training accuracy threshold.
+    *   All three metrics above are correlated.
+
+The final model performance is dependent on both metrics to be high enough.
+
+![Image 9](https://lilianweng.github.io/posts/2022-04-15-data-gen/affinity-diversity.png)
+
+(a) Left: A scatter plot of affinity vs diversity metric, where each point represents a different augmentation method and its color indicates the final test accuracy. (b) Right: The conceptual illustration of the relationship between clean and augmented data in different regions of affinity and diversity metrics. (Image source: [Gontijo-Lopes et al. 2020](https://arxiv.org/abs/2002.08973))
+
+There are many quantitative metrics on relevancy and diversity, in different formations depending on whether a reference is available, such as perplexity, BLEU for text and inception score for images. I’m skipping the list of concrete quantitative metrics on quality here, given it could be very long.
+
+## Training with Noisy Data
+
+It is convenient to collect a large amount of noisy data via model generation or data augmentation, but it is hard to guarantee that augmented and generated data can be 100% accurate. Knowing that deep neural networks can easily overfit noisy labels and “memotize” corrupted labels, we can apply the techniques for training on noisy labels (_noise-robust training_) when using generated data to stabilize and optimize the performance. Please check this [survey paper (Song et al. 2021)](https://arxiv.org/abs/2007.08199) on learning from noisy labels for a more thorough coverage of related work.
+
+## Regularization and Robust Architecture
+
+Generally speaking, mechanisms designed for avoiding overfitting should help improve training robustness when working with moderately noisy data, such as weight decay, dropout, batch normalization. In fact, good data augmentation (i.e. only non-essential attributes are modified) can be considered as a way of regularization as well.
+
+A different approach is to enhance the network with a dedicated **noisy adaptation layer** to approximate the unknown projection of label corruption ([Sukhbaatar et al. 2015](https://arxiv.org/abs/1406.2080), [Goldberger & Ben-Reuven, 2017](https://openreview.net/forum?id=H12GRgcxg)).
+
+[Sukhbaatar et al. (2015)](https://arxiv.org/abs/1406.2080) introduced an extra linear layer into the network architecture to adapt the predictions to match the noisy label distribution. The noise matrix is initially _fixed_ to the identity function while only the base model parameters is updated. After some time, starts to be updated and expected to capture the noise in the data. The noise matrix is trained with regularization to encourage it to match the noise distribution while keeping the base model prediction accurate for true labels.
+
+![Image 10](https://lilianweng.github.io/posts/2022-04-15-data-gen/noise-adaptation-layer.png)
+
+(a) Left: A noise matrix is added between softmax and the final output for the loss. (b) Right: The noise matrix is fixed at the identity function initially and only gets updated with regularization after some training. (Image source: [Sukhbaatar et al. 2015](https://arxiv.org/abs/1406.2080))
+
+However, it is hard to guarantee such a noise matrix layer would only capture the noise transition distribution and it is actually non-trivial to learn. [Goldberger & Ben-Reuven (2017)](https://openreview.net/forum?id=H12GRgcxg)) proposed to add an additional softmax layer end-to-end with the base model and apply the [EM algorithm](https://en.wikipedia.org/wiki/Expectation%E2%80%93maximization_algorithm) by treating the correct labels as latent random variable and the noise processes as a communication channel with unknown parameters.
+
+## Robust Learning Objective
+
+Besides the most commonly used cross entropy loss, some other choices of learning objectives are shown to be more robust to noisy labels.
+
+For example, **MAE** (mean absolute error) is more robust to noisy labels than CCE (categorical cross entropy), as it treats every sample equally ([Ghosh et al. 2017](https://arxiv.org/abs/1712.09482)). Lack of different weighting among training samples of MAE lead to significantly longer training time. Motivated by the tradeoff between MAE and CCE, [Zhang & Sabuncu (2018)](https://arxiv.org/abs/1805.07836) proposed _generalized cross entropy_ (**GCE**), a generalization of CCE loss to be robust to noisy data.
+
+To exploit the benefits of both the noise-robustness provided by MAE and the implicit weighting scheme of CCE, GCE adopts the the negative Box-Cox transformation as a loss function:
+
+where denotes the -th element of and . is equivalent to CCE when and becomes MAE when . Empirical experiments show that there exists a threshold of with which overfitting never emerges and the noisier the data the higher such a threshold should be.
+
+Given true and predicted labels, and let , the **zero-one loss**, , is another learning subjective shown to be robust to noisy data. Minimizing the empirical risk with the zero-one loss is shown to be equivalent to minimizing the empirical adversarial (worse-case) risk ([Hu et al 2018](https://arxiv.org/abs/1611.02041)). Because the worst-case risk is the upper bound of the classification risk of the clean data distribution, minimizing the worst-case risk can lead to decreased true risk, which makes the zero-one loss especially robust. However, the zero-one loss is non-differentiable and cannot be optimized directly. One solution is to approximate an _upper bound_ of the zero-one loss and to minimize the upper bound loss instead.
+
+The [hinge loss](https://en.wikipedia.org/wiki/Hinge_loss), , defines a rough upper bound of the zero-one loss. [Lyu & Tsang (2020)](https://arxiv.org/abs/1905.10045) proposed a _curriculum loss_ (**CL**), which is a tighter upper bound compared to a conventional surrogate loss like the hinge loss, .
+
+where is a base surrogate loss for the zero-one loss (e.g. hinge loss) and the optimal weighting variable is to be learned.
+
+Given a label corruption rate , the _noise pruned curriculum loss_ (**NPCL**) is constructed based on the intuition that an ideal model should correctly classify samples with clean labels but misclassify corrupted labels. If is a known prior, we would know how many samples (with largest losses) to be pruned. Assuming , then and the following NPCL is the basic CL for only samples:
+
+When experimenting on CIFAR-10, NPCL is comparable with GCE and performs better when the noise rate increases.
+
+## Label Correction
+
+Since it is known some labels are incorrect, noise-robust training can explicitly take the label correction into consideration.
+
+[](https://lilianweng.github.io/posts/2022-04-15-data-gen/)One approach is to rely on the estimation of a noise transition matrix and use that to correct the forward or backward loss, named **F-correction** ([Patrini et al. 2017](https://arxiv.org/abs/1609.03683)). Let’s first assume that there are classes and the noise transition matrix is observable and the label flipping probability does not depend on the sample input but only the label (i.e. known as random classification noise, RCN). Let denote a corrupted label. Each entry of represents the probability of one label flipping to another[1](https://lilianweng.github.io/posts/2022-04-15-data-gen/#fn:1),
+
+Then we can proceed a forward label correction procedure to incorporate the prior knowledge of noisy transition matrix into the prediction.
+
+In matrix form, we have . However, such a noise transition matrix is usually _unknown_. If we have access to a clean dataset, the noise matrix can be estimated ([Hendrycks et al. 2018](https://arxiv.org/abs/1802.05300)) by calculating confusion matrix on the clean data. Let’s denote a clean trusted dataset as and a noisy dataset as going forward.
+
+where is a subset of data points from with label .
+
+Let and this model should be trained with on clean data and with on noisy data .
+
+![Image 11](https://lilianweng.github.io/posts/2022-04-15-data-gen/GLC.png)
+
+Algorithm of gold loss correction (GLC), estimating the noise transition matrix with a trusted dataset. (Image source: [Hendrycks et al. 2018](https://arxiv.org/abs/1802.05300))
+
+If the trusted training dataset gets large, we can train a neural network only on clean data and _distill_ its knowledge into the primary model (i.e. the final model to make predictions at test time) using corrected **pseudo labels** ([Li et al. 2017](https://arxiv.org/abs/1703.02391)). The primary model is trained on the entire dataset, . Optionally the “side” information of label relations in the knowledge graph, if available, can be incorporated into distillation to help the robustness of the predictions of the network that is trained on limited data.
+
+The label correction distillation works as following:
+
+1.   First train an auxiliary model from the small clean dataset to provide a soft label for each sample , is the sigmoid activation with temperature .
+2.   Because the clean dataset is not large, is likely to overfit, [Li et al. (2017)](https://arxiv.org/abs/1703.02391) turn to a knowledge graph that defines the relations in the label space and _propagate_ the prediction among labels accordingly. The new soft label is donated as .
+3.   The primary model is trained with predictions from to imitate,
+
+## Sample Reweighting and Selection
+
+Some samples may be more likely to have inaccurate labels than others. Such estimation gives us intuition on which samples should be weighted less or more in the loss function. However, considering two types of biases in training data, class imbalance and noisy labels, there is actually a contradictory preference — We would prefer samples with larger loss to balance the label distribution but those with smaller loss for mitigating the potential noise. Some work ([Ren et al. 2018](https://arxiv.org/abs/1803.09050)) thus argue that in order to learn general forms of training data biases, it is _necessary_ to have _a small unbiased validation_ to guide training. The sample reweighting methods presented in this section all assume access to a small trusted set of clean data.
+
+Considering a binary classification task with random classification noise, , the label flipping probabilities, , are defined as:
+
+[Liu & Tao (2015)](https://arxiv.org/abs/1411.7718) applies **importance reweighting** to adjust the weighted distribution of observed to match the distribution of unobservable . Let be the true data distribution and be the corrupted version.
+
+Because,
+
+Thus the weight assigned to a noisy sample is,
+
+where can be estimated using a simple logistic regression, but estimating the note rates is more challenging. Naive cross-validation can work out but is costly as the quality depends on the amount of trusted labels available. The paper approximates the upper bounds for noise rates first, and then use a mild assumption to efficiently estimate them, . In their experiments, the advantage of importance reweighting only varies across datasets and is more beneficial when the noise rates are high in general.
+
+Sample reweighting schemes can be learned by a separate network. _Learning to reweight_ (**L2R**; [Ren et al. 2018](https://arxiv.org/abs/1803.09050)) is a meta-learning approach to directly optimize the weights in pursuit of best validation performance on a known set of clean data. Each example gets assigned with the weight based on its gradient direction. The weighted loss to minimize involves a set of training weights as unknown hyperparameters. These sample training weights are learned to minimize the loss on this unbiased validate set, .
+
+The learning process involves two nested loops of optimization, so pretty expensive, 3x training time.
+
+![Image 12](https://lilianweng.github.io/posts/2022-04-15-data-gen/L2R-backprop.png)
+
+Illustration of updates implemented by second order [automatic differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation). (Image source: [Ren et al. 2018](https://arxiv.org/abs/1803.09050))
+
+They ran experiments on (1) two-class MNIST to test the robustness of L2R when the class distribution is imbalanced and (2) CIFAR-10 with noisy labels. L2R is shown to be better than other baseline methods at the time on both tasks.
+
+![Image 13](https://lilianweng.github.io/posts/2022-04-15-data-gen/L2R-exp.png)
+
+Left: Imbalanced classes on MNIST (class 4 and 9); Right: Effect of the number of clean samples. Task is on CIFAR-10 with 40% of data flipped to label 3. (Image source: [Ren et al. 2018](https://arxiv.org/abs/1803.09050))
+
+**MentorNet** ([Jiang et al. 2018](https://arxiv.org/abs/1712.05055)) uses teach-student curriculum learning to weight data. It incorporates two different networks, a mentor and a student. The mentor network provides a data-driven curriculum (i.e. sample training weighting scheme) for the student to focus on learning likely correct labels.
+
+Let be the MentorNet parameterized by , be the StudentNet parametrized by and be a predefined curriculum parameterized by . Given the training data for a -class classification task, the MentorNet needs to predict a time-varying latent weight variable to guide the learning of StudentNet, taking an intermediate feature processed by StudentNet , :
+
+StudentNet learns to minimize the following learning objective,
+
+The mentor network is trained with cross entropy on the input , where if is known to be a correct label, otherwise 0. The architecture of MentorNet does not have to be very complicated. In the paper, they adopted a LSTM layer to capture the prediction variance in time.
+
+![Image 14](https://lilianweng.github.io/posts/2022-04-15-data-gen/MentorNet.png)
+
+Model architecture of MentorNet and StudentNet which are trained simultaneously, where MentorNet predicts the sample weights for StudentNet to train on. (Image source: [Jiang et al. 2018](https://arxiv.org/abs/1712.05055))
+
+Different from MentorNet where one network explicitly learns weighting scheme and curriculum for the other network, **Co-teaching** ([Han et al. 2018](https://arxiv.org/abs/1804.06872)) trains two neural networks, and , simultaneously and lets them teach each other by feeding data to each other selectively. Co-teaching consists of three steps:
+
+1.   First, each network feeds forward the current mini-batch and selects samples with potentially clean labels;
+2.   Then two networks exchange information on which samples in the batch should be used for training. Small-loss instances are selected as they are more likely to be associated with correct labels. The percentage of the batch to select is determined by a time-dependent function . The value of decreases in time because the network is more likely to overfit and memorize noisy labels as training progresses and thus we use a smaller sampling percentage to keep the selected data quality high.
+3.   Finally, each network runs back-propagation updates with the data selected by its peer.
+
+According to their experiments, co-teaching performs better than [F-correction](https://lilianweng.github.io/posts/2022-04-15-data-gen/#fcorrection) where the noise rates are high or the corruption transition matrix is not symmetric.
+
+![Image 15](https://lilianweng.github.io/posts/2022-04-15-data-gen/co-teaching.png)
+
+Algorithm of co-teaching in which two networks are trained separately in parallel and each selects samples for the other to train on. (Image source: [Han et al. 2018](https://arxiv.org/abs/1804.06872))
+
+## Citation
+
+Cited as:
+
+> Weng, Lilian. (Apr 2022). Learning with not enough data part 3: data generation. Lil’Log. https://lilianweng.github.io/posts/2022-04-15-data-gen/.
+
+Or
+
+```
+@article{weng2022datagen,
+  title   = "Learning with not Enough Data Part 3: Data Generation",
+  author  = "Weng, Lilian",
+  journal = "Lil'Log",
+  year    = "2022",
+  month   = "Apr",
+  url     = "https://lilianweng.github.io/posts/2022-04-15-data-gen/"
+}
+```
+
+## Reference
+
+[1] Zhang et al. [“Adversarial AutoAgument”](https://arxiv.org/abs/1912.11188) ICLR 2020.
+
+[2] Kumar et al. [“Data Augmentation using Pre-trained Transformer Models.”](https://arxiv.org/abs/2003.02245) AACL 2020 Workshop.
+
+[3] Anaby-Tavor et al. [“Not enough data? Deep learning to rescue!”](https://arxiv.org/abs/1911.03118) AAAI 2020.
+
+[4] Wang et al. [“Want To Reduce Labeling Cost? GPT-3 Can Help.”](https://arxiv.org/abs/2108.13487) EMNLP 2021.
+
+[5] Wang et al. [“Towards Zero-Label Language Learning.”](https://arxiv.org/abs/2109.09193) arXiv preprint arXiv:2109.09193 (2021).
+
+[6] Schick & Schutze. [Generating Datasets with Pretrained Language Models."](https://arxiv.org/abs/2104.07540) EMNLP 2021.
+
+[7] Han et al. [“Unsupervised Neural Machine Translation with Generative Language Models Only.”](https://arxiv.org/abs/2110.05448) arXiv preprint arXiv:2110.05448 (2021).
+
+[8] Guo et al. [“Augmenting data with mixup for sentence classification: An empirical study.”](https://arxiv.org/abs/1905.08941) arXiv preprint arXiv:1905.08941 (2019).
+
+[9] Ekin D. Cubuk et al. [“AutoAugment: Learning augmentation policies from data.”](https://arxiv.org/abs/1805.09501) arXiv preprint arXiv:1805.09501 (2018).
+
+[10] Daniel Ho et al. [“Population Based Augmentation: Efficient Learning of Augmentation Policy Schedules.”](https://arxiv.org/abs/1905.05393) ICML 2019.
+
+[11] Cubuk & Zoph et al. [“RandAugment: Practical automated data augmentation with a reduced search space.”](https://arxiv.org/abs/1909.13719) arXiv preprint arXiv:1909.13719 (2019).
+
+[12] Zhang et al. [“mixup: Beyond Empirical Risk Minimization.”](https://arxiv.org/abs/1710.09412) ICLR 2017.
+
+[13] Yun et al. [“CutMix: Regularization Strategy to Train Strong Classifiers with Localizable Features.”](https://arxiv.org/abs/1905.04899) ICCV 2019.
+
+[14] Kalantidis et al. [“Mixing of Contrastive Hard Negatives”](https://arxiv.org/abs/2010.01028) NeuriPS 2020.
+
+[15] Wei & Zou. [“EDA: Easy data augmentation techniques for boosting performance on text classification tasks.”](https://arxiv.org/abs/1901.11196) EMNLP-IJCNLP 2019.
+
+[16] Kobayashi. [“Contextual Augmentation: Data Augmentation by Words with Paradigmatic Relations.”](https://arxiv.org/abs/1805.06201) NAACL 2018
+
+[17] Fang et al. [“CERT: Contrastive self-supervised learning for language understanding.”](https://arxiv.org/abs/2005.12766) arXiv preprint arXiv:2005.12766 (2020).
+
+[18] Gao et al. [“SimCSE: Simple Contrastive Learning of Sentence Embeddings.”](https://arxiv.org/abs/2104.08821) arXiv preprint arXiv:2104.08821 (2020). [[code](https://github.com/princeton-nlp/SimCSE)]
+
+[19] Shen et al. [“A Simple but Tough-to-Beat Data Augmentation Approach for Natural Language Understanding and Generation.”](https://arxiv.org/abs/2009.13818) arXiv preprint arXiv:2009.13818 (2020) [[code](https://github.com/dinghanshen/cutoff)]
+
+[20] Wang & van den Oord. [“Multi-Format Contrastive Learning of Audio Representations.”](https://arxiv.org/abs/2103.06508) NeuriPS Workshop 2020.
+
+[21] Wu et al. [“Conditional BERT Contextual Augmentation”](https://arxiv.org/abs/1812.06705) arXiv preprint arXiv:1812.06705 (2018).
+
+[22 Zhu et al. [“FreeLB: Enhanced Adversarial Training for Natural Language Understanding.”](https://arxiv.org/abs/1909.11764) ICLR 2020.
+
+[23] Affinity and Diversity: Quantifying Mechanisms of Data Augmentation Gontijo-Lopes et al. 2020 ([https://arxiv.org/abs/2002.08973](https://arxiv.org/abs/2002.08973))
+
+[24] Song et al. [“Learning from Noisy Labels with Deep Neural Networks: A Survey.”](https://arxiv.org/abs/2007.08199) TNNLS 2020.
+
+[25] Zhang & Sabuncu. [“Generalized cross entropy loss for training deep neural networks with noisy labels.”](https://arxiv.org/abs/1805.07836) NeuriPS 2018.
+
+[26] Goldberger & Ben-Reuven. [“Training deep neural-networks using a noise adaptation layer.”](https://openreview.net/forum?id=H12GRgcxg) ICLR 2017.
+
+[27] Sukhbaatar et al. [“Training convolutional networks with noisy labels.”](https://arxiv.org/abs/1406.2080) ICLR Workshop 2015.
+
+[28] Patrini et al. [“Making Deep Neural Networks Robust to Label Noise: a Loss Correction Approach”](https://arxiv.org/abs/1609.03683) CVPR 2017.
+
+[29] Hendrycks et al. [“Using trusted data to train deep networks on labels corrupted by severe noise.”](https://arxiv.org/abs/1802.05300) NeuriPS 2018.
+
+[30] Zhang & Sabuncu. [“Generalized cross entropy loss for training deep neural networks with noisy labels.”](https://arxiv.org/abs/1805.07836) NeuriPS 2018.
+
+[31] Lyu & Tsang. [“Curriculum loss: Robust learning and generalization against label corruption.”](https://arxiv.org/abs/1905.10045) ICLR 2020.
+
+[32] Han et al. [“Co-teaching: Robust training of deep neural networks with extremely noisy labels.”](https://arxiv.org/abs/1804.06872) NeuriPS 2018. ([code](https://github.com/bhanML/Co-teaching))
+
+[33] Ren et al. [“Learning to reweight examples for robust deep learning.”](https://arxiv.org/abs/1803.09050) ICML 2018.
+
+[34] Jiang et al. [“MentorNet: Learning data-driven curriculum for very deep neural networks on corrupted labels.”](https://arxiv.org/abs/1712.05055) ICML 2018.
+
+[35] Li et al. [“Learning from noisy labels with distillation.”](https://arxiv.org/abs/1703.02391) ICCV 2017.
+
+[36] Liu & Tao. [“Classification with noisy labels by importance reweighting.”](https://arxiv.org/abs/1411.7718) TPAMI 2015.
+
+[37] Ghosh, et al. [“Robust loss functions under label noise for deep neural networks.”](https://arxiv.org/abs/1712.09482) AAAI 2017.
+
+[38] Hu et al. [“Does Distributionally Robust Supervised Learning Give Robust Classifiers? “](https://arxiv.org/abs/1611.02041) ICML 2018.
+
+* * *
+
+1.   is not a technically correct way to annotate a label being a certain value, since we usually use one-hot encoding (i.e. ). We use this form for simplicity.[↩︎](https://lilianweng.github.io/posts/2022-04-15-data-gen/#fnref:1)

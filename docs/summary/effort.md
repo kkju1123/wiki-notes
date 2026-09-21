@@ -32,9 +32,9 @@ response = client.messages.create(
             "content": "Analyze the trade-offs between microservices and monolithic architectures"
         }
     ],
-    output_config={
+    <mark>output_config={
         "effort": "medium"
-    }
+    }</mark>
 )
 
 for block in response.content:
@@ -176,7 +176,7 @@ effort = thinking level
 ```text
 effort
    ↓
-Claude 整个任务愿意投入多少工作量
+Claude 整个任务愿意投入多少<mark><mark>工作量</mark></mark>
 ```
 
 ([Claude Platform][1])
@@ -280,7 +280,7 @@ effort
 整个回答要多努力
 ```
 
-在 adaptive thinking 下，effort 还会影响 Claude **多经常思考、思考多深**。官方也特别提醒：
+在 <mark>adaptive thinking</mark> 下，effort 还会影响 Claude **多经常思考、思考多深**。官方也特别提醒：
 
 ```python
 output_config={"effort": "adaptive"}

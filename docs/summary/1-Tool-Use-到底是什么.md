@@ -1,8 +1,8 @@
 ---
 title: 1. Tool Use 到底是什么？
-url: wikibar://summary/blog/1-Tool-Use-到底是什么
+url: wikibar://summary/summary/1-Tool-Use-到底是什么
 source_type: summary
-folder: blog
+folder: summary
 author: null
 tags: []
 summary: ''
